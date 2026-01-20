@@ -1,0 +1,16 @@
+/**
+ * And gate:
+ * if (a and b) out = 1, else out = 0 
+ */
+CHIP And {
+    IN a, b;
+    OUT out;
+    
+    PARTS:
+    /*
+     Firstly, doing Nand to get (Not(a) or Not(b))
+     Then, do Not to get the And Gate equation
+    */
+    Nand(a= a, b= b, out= w1); 
+    Not(in= w1, out= out);
+}

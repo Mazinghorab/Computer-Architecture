@@ -1,0 +1,12 @@
+/**
+ * Not gate:
+ * if (in) out = 0, else out = 1
+ */
+CHIP Not {
+    IN in;
+    OUT out;
+
+    PARTS:
+    // input 2 same inputs into Nand and you will get NOT
+    Nand(a= in, b= in, out= out);
+}

@@ -1,0 +1,20 @@
+/** 
+ * Multiplexor:
+ * if (sel = 0) out = a, else out = b
+ */
+CHIP Mux {
+    IN a, b, sel;
+    OUT out;
+
+    /*
+     get the Not of sel
+     select 'a' if 'sel' is 0
+     else select 'b'
+    */
+
+    PARTS:
+    Not(in= sel, out= notsel);
+    And(a= a, b= notsel, out= nanda);
+    And(a= b, b= sel, out= nandb);
+    Or(a= nanda, b= nandb, out= out);
+}
