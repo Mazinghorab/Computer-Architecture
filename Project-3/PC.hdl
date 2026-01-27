@@ -1,0 +1,28 @@
+/**
+ * A 16-bit counter.
+ * if      reset(t): out(t+1) = 0
+ * else if load(t):  out(t+1) = in(t)
+ * else if inc(t):   out(t+1) = out(t) + 1
+ * else              out(t+1) = out(t)
+ */
+CHIP PC {
+    IN in[16], reset, load, inc;
+    OUT out[16];
+    
+    PARTS:
+    // The Feedback loop
+    // We need to know what the current value is to add 1 to it
+    Inc16(in= feedback, out= plusOne);
+
+    // Mux Layer 1: handle increment
+    Mux16(a= feedback, b= plusOne, sel= inc, out= w1);
+
+    // Mux Layer 2: handle load (higher priority than increment)
+    Mux16(a= w1, b= in, sel= load, out= w2);
+
+    // Mux Layer 3: handle reset (highest priority)
+    Mux16(a= w2, b= false, sel= reset, out= toRegister);
+
+    // The Memory
+    Register(in= toRegister, load= true, out= out, out= feedback);
+}
