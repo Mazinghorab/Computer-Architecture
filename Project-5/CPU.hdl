@@ -1,0 +1,94 @@
+/**
+ * The Hack Central Processing unit (CPU).
+ * Parses the binary code in the instruction input and executes it according to the
+ * Hack machine language specification. In the case of a C-instruction, computes the
+ * function specified by the instruction. If the instruction specifies to read a memory
+ * value, the inM input is expected to contain this value. If the instruction specifies
+ * to write a value to the memory, sets the outM output to this value, sets the addressM
+ * output to the target address, and asserts the writeM output (when writeM = 0, any
+ * value may appear in outM).
+ * If the reset input is 0, computes the address of the next instruction and sets the
+ * pc output to that value. If the reset input is 1, sets pc to 0.
+ * Note: The outM and writeM outputs are combinational: they are affected by the
+ * instruction's execution during the current cycle. The addressM and pc outputs are
+ * clocked: although they are affected by the instruction's execution, they commit to
+ * their new values only in the next cycle.
+ */
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    // 1. Instruction Decoding & A-Register
+    // Determining if we are dealing with an A-instruction or C-instruction
+    Not(in= instruction[15], out= isAInstruction);
+    
+    // If it is a C-instruction, we might load the output of the ALU into A.
+    // If it is an A-instruction, we load the instruction itself into A.
+    Mux16(a= instruction, b= ALUOutput, sel= instruction[15], out= inAReg);
+
+    // Load A if: (It is an A-instruction) OR (It is a C-instruction AND dest is A)
+    // instruction[5] is the 'd1' bit (destination A)
+    Or(a= isAInstruction, b= instruction[5], out= loadA);
+    ARegister(in= inAReg, load= loadA, out= outA, out[0..14]= addressM);
+
+    // 2. ALU Inputs & D-Register
+    // The 'a' bit (instruction[12]) determines if the ALU uses A (register) or M (memory) input.
+    // 0 = A, 1 = M. This is only relevant for C-instructions, but safe to mux always.
+    Mux16(a= outA, b= inM, sel= instruction[12], out= AM);
+
+    // Load D if: (It is a C-instruction) AND (dest is D)
+    // instruction[4] is the 'd2' bit (destination D)
+    And(a= instruction[15], b= instruction[4], out= loadD);
+    DRegister(in= ALUOutput, load= loadD, out= outD);
+
+    // 3. THE ALU
+    // Wired directly to the "c-bits" in the instruction (bits 6..11)
+    ALU(x= outD, y= AM,
+        zx= instruction[11],
+        nx= instruction[10],
+        zy= instruction[9],
+        ny= instruction[8],
+        f= instruction[7],
+        no= instruction[6],
+        out= ALUOutput, out= outM,
+        zr= zr, ng= ng);
+
+    // 4. Writing to Memory (writeM)
+    // Write to memory if: (C-instruction) AND (dest is M)
+    // instruction[3] is 'd3' (destination M)
+    And(a= instruction[15], b= instruction[3], out= writeM);
+
+    // 5. PC & Jump Logic
+    // Analyze ALU flags to see if conditions allow a jump
+    // zr means out = 0, ng means out < 0
+    // We need "pos" (positive) which means NOT zero AND NOT negative
+    Or(a= zr, b= ng, out= zeroOrNeg);
+    Not(in= zeroOrNeg, out= pos);
+    // Check individual jump bits (j1, j2, j3) against ALU flags
+    // j1 (instruction[2]): jump if < 0
+    And(a= instruction[2], b= ng, out= jlt);
+    // j2 (instruction[1]): jump if = 0
+    And(a= instruction[1], b= zr, out= jeq);
+    // j3 (instruction[0]): jump if > 0
+    And(a= instruction[0], b= pos, out= jgt);
+
+    // Combine jump conditions
+    Or(a= jlt, b= jeq, out= jle);
+    Or(a= jle, b= jgt, out= jumpConditionMet);
+
+    // ESSENTIAL: Only jump if it's actually a C-Instruction!
+    And(a= instruction[15], b= jumpConditionMet, out= loadPC);
+    
+    // If not loading (jumping), we increment. Reset overrides all.
+    PC(in= outA, load= loadPC, inc= true, reset= reset, out[0..14]= pc);
+}
